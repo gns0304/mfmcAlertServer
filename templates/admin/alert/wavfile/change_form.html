@@ -1,0 +1,49 @@
+{% extends "admin/change_form.html" %}
+{% load i18n admin_urls %}
+
+{% block after_field_sets %}
+  {{ block.super }}
+
+  {% if change and original %}
+  <fieldset class="module aligned">
+    <h2>선택 장비 제어</h2>
+
+    <form method="post" style="margin-top:10px;">
+      {% csrf_token %}
+
+      <div style="margin: 8px 0; color:#666;">
+        체크된 장비에만 방송/정지를 보냅니다.
+      </div>
+
+      <div style="max-height:240px; overflow:auto; border:1px solid #ddd; padding:10px; border-radius:6px;">
+        {% for d in devices %}
+          <label style="display:block; padding:4px 0;">
+            <input type="checkbox" name="device_ids" value="{{ d.id }}">
+            {{ d }} {% if d.last_seen_at %}<span style="color:#888;">(last: {{ d.last_seen_at }})</span>{% endif %}
+          </label>
+        {% empty %}
+          <div style="color:#888;">등록된 장비가 없습니다.</div>
+        {% endfor %}
+      </div>
+
+<div class="submit-row">
+    <input
+        type="submit"
+        name="_target_play"
+        value="선택 장비 방송"
+        class="button"
+        formaction="{% url 'admin:wav-target-play' original.pk %}"
+    />
+
+    <input
+        type="submit"
+        name="_target_stop"
+        value="선택 장비 정지"
+        class="button"
+        formaction="{% url 'admin:wav-target-stop' original.pk %}"
+    />
+</div>
+    </form>
+  </fieldset>
+  {% endif %}
+{% endblock %}
