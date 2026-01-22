@@ -1,24 +1,12 @@
 from django.http import JsonResponse, FileResponse, HttpResponseBadRequest
 from django.views.decorators.http import require_GET, require_POST
-from django.utils import timezone
-from .models import DeviceLog
-from django.contrib.auth import authenticate
-from .models import Command
-from .auth import basic_auth_device
 from django.views.decorators.csrf import csrf_exempt
+from django.utils import timezone
+from django.db.models import Q
 
-def _basic_auth(request):
-    auth = request.META.get("HTTP_AUTHORIZATION", "")
-    if not auth.startswith("Basic "):
-        return None
-    import base64
-    try:
-        raw = base64.b64decode(auth.split(" ", 1)[1]).decode("utf-8")
-        username, password = raw.split(":", 1)
-    except Exception:
-        return None
-    user = authenticate(username=username, password=password)
-    return user
+from .auth import basic_auth_device
+from .models import Command, DeviceLog
+
 
 @require_GET
 @basic_auth_device
@@ -26,23 +14,22 @@ def status(request):
     device = request.device
     last_id = request.GET.get("last_id")
 
-    # last_seen 업데이트
     device.last_seen_at = timezone.now()
     device.save(update_fields=["last_seen_at"])
 
-    qs = Command.objects.order_by("-id")
-
-    # 장비 대상 필터: 전체거나, targets에 포함된 명령
-    qs = qs.filter(all_devices=True) | qs.filter(targets=device)
-    qs = qs.order_by("-id")
+    qs = (
+        Command.objects
+        .filter(Q(all_devices=True) | Q(targets=device))
+        .order_by("-id")
+        .distinct()
+    )
 
     if last_id:
-        # last_id는 숫자(pk) 기준으로 다루는게 가장 단순
         try:
             last_id_int = int(last_id)
             qs = qs.filter(id__gt=last_id_int)
         except ValueError:
-            pass
+            return JsonResponse({"error": "invalid_last_id"}, status=400)
 
     cmd = qs.first()
     if not cmd:
@@ -67,22 +54,28 @@ def file(request):
         return HttpResponseBadRequest("command_id is required")
 
     try:
-        cmd = Command.objects.select_related("wav").get(id=int(command_id))
-    except Exception:
-        return JsonResponse({"error": "not found"}, status=404)
+        cmd_id = int(command_id)
+    except ValueError:
+        return JsonResponse({"error": "invalid_command_id"}, status=400)
 
-    # 본인 대상인지 체크(보안)
+    cmd = Command.objects.select_related("wav").filter(id=cmd_id).first()
+    if not cmd:
+        return JsonResponse({"error": "not_found"}, status=404)
+
     device = request.device
     is_target = cmd.all_devices or cmd.targets.filter(id=device.id).exists()
     if not is_target:
         return JsonResponse({"error": "forbidden"}, status=403)
 
     if cmd.action != Command.Action.PLAY or not cmd.wav:
-        return JsonResponse({"error": "not a play command"}, status=400)
+        return JsonResponse({"error": "not_a_play_command"}, status=400)
 
     f = cmd.wav.file
-    return FileResponse(f.open("rb"), as_attachment=True, filename=str(cmd.wav))
-
+    return FileResponse(
+        f.open("rb"),
+        as_attachment=True,
+        filename=str(cmd.wav),
+    )
 
 
 @csrf_exempt
@@ -90,7 +83,6 @@ def file(request):
 @basic_auth_device
 def device_log(request):
     device = request.device
-
     level = (request.POST.get("level") or "INFO")[:20]
     message = (request.POST.get("message") or "")[:4000]
 
@@ -98,7 +90,5 @@ def device_log(request):
         device=device,
         level=level,
         message=message,
-        created_at=timezone.now(),
     )
-
     return JsonResponse({"ok": True})

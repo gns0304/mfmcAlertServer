@@ -20,8 +20,8 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 urlpatterns = [
-    path("", admin.site.urls),
-    path("", include("alert.urls")),
+    path("admin/", admin.site.urls),
+    path("api/", include("alert.urls")),
 ]
 
 # ✅ 개발용: DEBUG=True일 때만 /media/ 서빙
