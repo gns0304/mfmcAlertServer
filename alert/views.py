@@ -1,13 +1,11 @@
 from django.http import JsonResponse, FileResponse, HttpResponseBadRequest
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_GET, require_POST
 from django.utils import timezone
-from .models import Device, DeviceLog
+from .models import DeviceLog
 from django.contrib.auth import authenticate
 from .models import Command
 from .auth import basic_auth_device
 from django.views.decorators.csrf import csrf_exempt
-from django.contrib.auth.decorators import login_required
-
 
 def _basic_auth(request):
     auth = request.META.get("HTTP_AUTHORIZATION", "")
@@ -88,21 +86,13 @@ def file(request):
 
 
 @csrf_exempt
-@login_required
+@require_POST
+@basic_auth_device
 def device_log(request):
-    user = _basic_auth(request)
-    if not user:
-        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    device = request.device
 
-    try:
-        level = (request.POST.get("level") or "INFO")[:20]
-        message = (request.POST.get("message") or "")[:4000]
-    except Exception:
-        return JsonResponse({"ok": False, "error": "bad_request"}, status=400)
-
-    device = Device.objects.filter(user=user).first()
-    if not device:
-        return JsonResponse({"ok": False, "error": "device_not_found"}, status=404)
+    level = (request.POST.get("level") or "INFO")[:20]
+    message = (request.POST.get("message") or "")[:4000]
 
     DeviceLog.objects.create(
         device=device,
