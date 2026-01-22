@@ -2,10 +2,25 @@ from django.http import JsonResponse, FileResponse, HttpResponseBadRequest
 from django.views.decorators.http import require_GET
 from django.utils import timezone
 from .models import Device, DeviceLog
-
+from django.contrib.auth import authenticate
 from .models import Command
 from .auth import basic_auth_device
+from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth.decorators import login_required
 
+
+def _basic_auth(request):
+    auth = request.META.get("HTTP_AUTHORIZATION", "")
+    if not auth.startswith("Basic "):
+        return None
+    import base64
+    try:
+        raw = base64.b64decode(auth.split(" ", 1)[1]).decode("utf-8")
+        username, password = raw.split(":", 1)
+    except Exception:
+        return None
+    user = authenticate(username=username, password=password)
+    return user
 
 @require_GET
 @basic_auth_device
@@ -70,26 +85,30 @@ def file(request):
     f = cmd.wav.file
     return FileResponse(f.open("rb"), as_attachment=True, filename=str(cmd.wav))
 
-# alert/views.py
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from django.contrib.auth.decorators import login_required
 
 
 @csrf_exempt
 @login_required
 def device_log(request):
-    if request.method != "POST":
-        return JsonResponse({"ok": False}, status=405)
+    user = _basic_auth(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
 
-    device = Device.objects.filter(user=request.user).first()
+    try:
+        level = (request.POST.get("level") or "INFO")[:20]
+        message = (request.POST.get("message") or "")[:4000]
+    except Exception:
+        return JsonResponse({"ok": False, "error": "bad_request"}, status=400)
+
+    device = Device.objects.filter(user=user).first()
     if not device:
-        return JsonResponse({"ok": False, "error": "device not found"}, status=403)
+        return JsonResponse({"ok": False, "error": "device_not_found"}, status=404)
 
-    data = request.POST
     DeviceLog.objects.create(
         device=device,
-        level=data.get("level", "INFO"),
-        message=data.get("message", ""),
+        level=level,
+        message=message,
+        created_at=timezone.now(),
     )
+
     return JsonResponse({"ok": True})
