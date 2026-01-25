@@ -47,7 +47,7 @@ def log(msg: str, level: str = "INFO") -> None:
 
     try:
         requests.post(
-            f"{SERVER}/api/client-log",
+            f"{SERVER}/api/device-log",
             data={"level": level, "message": msg},
             auth=(USERNAME, PASSWORD),
             timeout=3,

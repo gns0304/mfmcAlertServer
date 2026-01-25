@@ -4,5 +4,5 @@ from . import views
 urlpatterns = [
     path("status", views.status, name="api_status"),
     path("file", views.file, name="api_file"),
-    path("client-log", views.device_log, name="device_log"),
+    path("device-log", views.device_log, name="device_log"),
 ]
