@@ -42,6 +42,21 @@
         class="button"
         formaction="{% url 'admin:wav-target-stop' original.pk %}"
     />
+
+    <input
+        type="submit"
+        name="_all_play"
+        value="전체 장비 방송"
+        class="button"
+        formaction="{% url 'admin:wav-all-play' original.pk %}"
+    />
+    <input
+        type="submit"
+        name="_all_stop"
+        value="전체 장비 정지"
+        class="button danger"
+        formaction="{% url 'admin:wav-all-stop' %}"
+    />
 </div>
     </form>
   </fieldset>

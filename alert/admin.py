@@ -41,8 +41,6 @@ class WavFileAdmin(admin.ModelAdmin):
     list_display = (
         "title_link",
         "file_name",
-        "all_play_button",
-        "all_stop_button",
     )
     list_display_links = ("title_link",)
     fields = ("title", "description", "file")
@@ -147,7 +145,7 @@ class BroadcastLogAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
 @admin.register(Device)
 class DeviceAdmin(admin.ModelAdmin):
-    list_display = ("name_link", "user", "is_active", "last_seen_at", "gen_password_button")
+    list_display = ("name_link", "user", "is_active", "last_seen_at")
     list_display_links = ("name_link",)
     search_fields = ("name", "user__username")
     list_filter = ("is_active",)
@@ -155,13 +153,13 @@ class DeviceAdmin(admin.ModelAdmin):
 
     def get_fieldsets(self, request, obj=None):
         base = ((None, {"fields": ("name", "user", "is_active")}),)
-        if request.user.is_superuser:
-            return base + (("최근 클라이언트 로그 (최신 10개)", {"fields": ("recent_device_logs",)}),)
+        if obj:
+            return base + (("최근 클라이언트 로그 (최신 25개)", {"fields": ("recent_device_logs",)}),)
         return base
 
     def get_readonly_fields(self, request, obj=None):
         ro = list(super().get_readonly_fields(request, obj))
-        if request.user.is_superuser:
+        if obj:
             ro.append("recent_device_logs")
         return ro
 
@@ -169,7 +167,7 @@ class DeviceAdmin(admin.ModelAdmin):
         if not obj:
             return format_html('<span style="color:#888;">-</span>')
 
-        logs = DeviceLog.objects.filter(device=obj).order_by("-created_at")[:10]
+        logs = DeviceLog.objects.filter(device=obj).order_by("-created_at")[:25]
 
         if not logs:
             return format_html('<span style="color:#888;">로그 없음</span>')
@@ -228,6 +226,11 @@ class DeviceAdmin(admin.ModelAdmin):
                 self.admin_site.admin_view(self.generate_app_password_view),
                 name="device-generate-app-password",
             ),
+            path(
+                "<int:device_id>/connection_check/",
+                self.admin_site.admin_view(self.connection_check_view),
+                name="device-connection-check",
+            ),
         ]
         return custom + urls
 
@@ -254,15 +257,67 @@ class DeviceAdmin(admin.ModelAdmin):
         )
         return TemplateResponse(request, "admin/alert/device/app_password_created.html", context)
 
+    def connection_check_view(self, request, device_id: int):
+        device = get_object_or_404(Device, pk=device_id)
+        
+        # Create a PING command for the device
+        command = Command.objects.create(action=Command.Action.PING, all_devices=False)
+        command.targets.set([device])
+        
+        self.message_user(
+            request, 
+            f"장비 '{device.name or device.user.username}'에 연결 확인 명령을 보냈습니다. 클라이언트 응답을 기다립니다.", 
+            level=messages.INFO
+        )
+        
+        return redirect("admin:alert_device_change", object_id=device_id)
+
+
 
 @admin.register(DeviceLog)
-class DeviceLogAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+class DeviceLogAdmin(admin.ModelAdmin):
     list_display = ("created_at", "device", "level", "short_message")
     list_filter = ("device", "level", ("created_at", DateFieldListFilter))
     search_fields = ("message", "device__name", "device__user__username")
     date_hierarchy = "created_at"
     ordering = ("-created_at",)
     list_select_related = ("device",)
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+
+        # 사용자가 'view' 권한을 가진 Device 목록을 가져옴
+        allowed_device_ids = [
+            d.pk
+            for d in Device.objects.all()
+            if request.user.has_perm("alert.view_device", d)
+        ]
+        return qs.filter(device_id__in=allowed_device_ids)
+
+    def has_view_permission(self, request, obj=None):
+        if request.user.is_superuser:
+            return True
+
+        if obj:  # 특정 DeviceLog 객체에 대한 권한 확인
+            return request.user.has_perm("alert.view_device", obj.device)
+
+        # 메뉴 노출 여부 결정: 사용자가 볼 수 있는 Device가 하나라도 있는지 확인
+        return any(
+            request.user.has_perm("alert.view_device", d)
+            for d in Device.objects.all()
+        )
+
+    def has_add_permission(self, request):
+        return bool(request.user and request.user.is_superuser)
+
+    def has_change_permission(self, request, obj=None):
+        return bool(request.user and request.user.is_superuser)
+
+    def has_delete_permission(self, request, obj=None):
+        return bool(request.user and request.user.is_superuser)
+
 
     def short_message(self, obj):
         return obj.message[:120]

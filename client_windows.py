@@ -197,6 +197,12 @@ def main() -> None:
                 last_id = cmd_id
                 save_last_id(last_id)
 
+            elif action == "PING":
+                log(f"[COMMAND] PING id={cmd_id}")
+                log(f"Ping received from server. Client is active. Command ID: {cmd_id}", level="INFO")
+                last_id = cmd_id
+                save_last_id(last_id)
+
             else:
                 log(f"[COMMAND] UNKNOWN action={action} id={cmd_id}", level="WARNING")
                 last_id = cmd_id

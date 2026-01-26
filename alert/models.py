@@ -60,6 +60,7 @@ class Command(models.Model):
     class Action(models.TextChoices):
         PLAY = "PLAY", "PLAY"
         STOP = "STOP", "STOP"
+        PING = "PING", "PING"
 
     action = models.CharField(max_length=10, choices=Action.choices)
     wav = models.ForeignKey(WavFile, null=True, blank=True, on_delete=models.SET_NULL)
